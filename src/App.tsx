@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState} from 'react';
-import {Stage, Layer, Rect, Transformer, Group} from 'react-konva';
+import {Stage, Layer, Rect, Transformer, Group,Text} from 'react-konva';
 import {createEvent, createStore} from 'effector';
 import {useStore} from 'effector-react';
 import Konva from "konva";
@@ -20,7 +20,7 @@ interface Props  {
     isSelected: boolean;
     onChange: (newAttrs:any)=>void;
     isDraggable: boolean;
-    onClick: (e:any)=>void;
+    onClick: (e:any,ref:any)=>void;
 }
 
 const Rectangle:React.FC<Props> = (({shapeProps, isSelected, onChange, isDraggable,onClick}) => {
@@ -37,8 +37,8 @@ const Rectangle:React.FC<Props> = (({shapeProps, isSelected, onChange, isDraggab
         return (
             <React.Fragment>
                 <Rect
-                    onClick={onClick}
-                    onTap={onClick}
+                    onClick={(evt)=>onClick(evt,ref)}
+                    onTap={(evt)=>onClick(evt,ref)}
                     ref={ref}
                     {...shapeProps}
                     draggable={isDraggable}
@@ -69,17 +69,6 @@ const Rectangle:React.FC<Props> = (({shapeProps, isSelected, onChange, isDraggab
                         }
                     }}
                 />
-                {isSelected && (
-                    <Transformer
-                        ref={trRef}
-                        boundBoxFunc={(oldBox, newBox) => {
-                            if (newBox.width < 5 || newBox.height < 5) {
-                                return oldBox;
-                            }
-                            return newBox;
-                        }}
-                    />
-                )}
             </React.Fragment>
         )
     }
@@ -89,7 +78,7 @@ const Rectangle:React.FC<Props> = (({shapeProps, isSelected, onChange, isDraggab
 const $positions = createStore([
     {x:20,y:20,width:100,height:100,fill:'red',id:'1'},
     {x:200,y:20,width:100,height:100,fill:'green',id:'2'},
-    {x:400,y:20,width:100,height:100,fill:'green',id:'3'},
+    {x:400,y:20,width:100,height:100,fill:'red',id:'3'},
     {x:600,y:20,width:100,height:100,fill:'green',id:'4'}
 ]);
 
@@ -104,20 +93,31 @@ function App() {
     const pos = useStore($positions);
     const [selectedId,setSelected] = useState('');
     const [selectedGroup, setSelectedGroup] = useState<string[]>([]);
-    const [group, setGroup] = useState<boolean>(false);
-
-    // const groupArray = pos.filter(rect => selectedGroup.includes(rect.id));
-    // const freeArray = pos.filter(rect => !selectedGroup.includes(rect.id));
-    // const mergedArray = [...groupArray, ...freeArray];
-    //
+    const trRef = useRef<Konva.Transformer>(null);
+    const groupRef = useRef<Konva.Group>(null);
+    const layerRef = useRef<Konva.Layer>(null);
+    const [nodesArray, setNodes] = useState<Konva.Rect[]>([]);
+    const [stageScale, setStageScale] = useState<number>(1);
+    const [stageX, setStageX] = useState<number>(0);
+    const [stageY, setStageY] = useState<number>(0);
 
     console.log("render");
-    // console.log(groupArray,freeArray);
 
-    const drawFigures =(arr:figure[],draggable:boolean)=>{
+    const inGroup = (idRect:string)=>{
+        if(groupRef.current){
+            if(groupRef.current.children){
+                if(groupRef.current.children.find((rect) => rect.id() === idRect)){
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    const drawFigures =(arr:figure[])=>{
         return arr.map((rect,index) =>(
             <Rectangle
-                isDraggable={draggable}
+                isDraggable={inGroup(rect.id)}
                 key={index}
                 shapeProps={rect}
                 isSelected={selectedGroup.includes(rect.id)||rect.id === selectedId}
@@ -126,41 +126,91 @@ function App() {
                     rects[index] = newAttrs;
                     setPositions(rects);
                 }}
-                onClick={(e)=>{
+                onClick={(evt,e)=>{
+                    if (e.current !== undefined) {
+                        let temp = nodesArray;
+                        if (!nodesArray.includes(e.current)) temp.push(e.current);
+                        setNodes(temp);
+                        if(trRef.current){
+                            trRef.current.nodes([e.current]);
+                        }
+                        if(evt.evt.shiftKey){
+                            if(trRef.current){
+                                trRef.current.nodes(nodesArray);
+                                trRef.current.getLayer()!.batchDraw();
+                            }
+                        }else{
+                            setNodes([]);
+                        }
+                    }
                     setSelected(rect.id);
-                    const updatedGroup = [rect.id];
-                    setSelectedGroup(updatedGroup);
-                    // setSelectedGroup(updatedGroup);
-                    // if(e.evt.shiftKey){
-                    //     if(!selectedGroup.includes(selectedId)){
-                    //         const updatedGroup = [...selectedGroup,selectedId,];
-                    //         setSelectedGroup(updatedGroup);
-                    //     }
-                    // }else{
-                    //     setSelectedGroup([selectedId]);
-                    // }
                 }}
             />
         ))
     }
 
-    // const checkDeselect = (e:any) => {
-    //     // deselect when clicked on empty area
-    //     const clickedOnEmpty = e.target === e.target.getStage();
-    //     if (clickedOnEmpty) {
-    //         setSelected('');
-    //         trRef.current.nodes([]);
-    //         setNodes([]);
-    //         // layerRef.current.remove(selectionRectangle);
-    //     }
-    // };
+    const checkDeselect = (e:any) => {
+        const clickedOnEmpty = e.target === e.target.getStage();
+        if (clickedOnEmpty) {
+            if(selectedId !== '')setSelected('');
+            trRef.current!.nodes([]);
+            setNodes([]);
+        }
+    };
 
-    return (
-        <div
+    const wheelZoom = (e:any) =>{
+        e.evt.preventDefault();
+        const scaleBy = 1.02;
+        const stage = e.target.getStage();
+        const oldScale = stage.scaleX();
+        const mousePointTo = {
+            x: stage.getPointerPosition().x / oldScale - stage.x() / oldScale,
+            y: stage.getPointerPosition().y / oldScale - stage.y() / oldScale
+        };
+
+        const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+
+        setStageScale(newScale);
+        setStageX((stage.getPointerPosition().x / newScale - mousePointTo.x) * newScale)
+        setStageY((stage.getPointerPosition().y / newScale - mousePointTo.y) * newScale)
+    }
+
+    const sizeBox = () =>{
+        if(layerRef.current){
+            const selected =  layerRef.current.children?.find((shape)=>shape.id() === selectedId)
+            if(selected && selected.constructor.name === 'Rect'){
+                const x = selected.attrs.x;
+                const height = selected.attrs.height;
+                const width = selected.attrs.width;
+                const y = selected.attrs.y + height + 10;
+                return (
+                    <Group>
+                        <Rect
+                            x={x}
+                            y={y}
+                            width={width}
+                            height={40}
+                            fill={'grey'}
+                        />
+                        <Text
+                            align={'center'}
+                            x={x}
+                            y={y}
+                            text={`Height:${Math.floor(height)}\nWidth:${Math.floor(width)}`}
+                            fontSize={20}
+                        />
+                    </Group>
+                )
+            }
+        }
+    }
+
+    return (<div
              onKeyDown={(e)=>{
                  e.preventDefault();
-                 if(e.ctrlKey){
+                 if(e.ctrlKey||e.metaKey){
                      if(e.key === 'd'){
+                         console.log("hello")
                          const clone = Object.assign({}, pos.find(word => word.id === selectedId))
                          if(clone !== undefined){
                              clone.id = uuidv4();
@@ -168,33 +218,41 @@ function App() {
                          }
                      }
                  }
-                 if(e.ctrlKey){
+                 if(e.ctrlKey||e.metaKey){
                      if(e.key === 'g'){
-                         setGroup(true);
+                         if(groupRef.current){
+                             nodesArray.forEach(rect=>{
+                                 groupRef.current!.add(rect);
+                             })
+                         }
                      }
                  }
              }}
-             tabIndex={0}>
+             tabIndex={0}
+        >
             <Stage
-                width={window.innerWidth}
-                height={window.innerHeight}
-                // onDoubleClick={()=>{
-                //     setSelectedGroup([]);
-                //     setSelected('');
-                // }}
-                // tabIndex={0}
-                // onTouchStart={checkDeselect}
+                width={window.innerWidth+400}
+                height={window.innerHeight+400}
+                onClick={checkDeselect}
+                onWheel={wheelZoom}
+                scaleX={stageScale}
+                scaleY={stageScale}
+                x={stageX}
+                y={stageY}
             >
-
-                  <Layer>
-                      {/*{!group && drawFigures(mergedArray,true)}*/}
-                      {/*{true && (*/}
-                      {/*    <Group draggable>*/}
-                      {/*        {drawFigures(groupArray, false)}*/}
-                      {/*    </Group>*/}
-                      {/*)}*/}
-                      {/*{true && drawFigures(freeArray,true)}*/}
-                      {drawFigures(pos,true)}
+                  <Layer ref={layerRef}>
+                      {layerRef.current && sizeBox()}
+                      {drawFigures(pos)}
+                      <Transformer
+                          ref={trRef}
+                          boundBoxFunc={(oldBox, newBox) => {
+                              if (newBox.width < 5 || newBox.height < 5) {
+                                  return oldBox;
+                              }
+                              return newBox;
+                          }}
+                      />
+                      <Group ref={groupRef} draggable/>
                   </Layer>
             </Stage>
         </div>
