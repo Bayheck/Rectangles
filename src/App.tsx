@@ -92,14 +92,15 @@ $positions
 function App() {
     const pos = useStore($positions);
     const [selectedId,setSelected] = useState('');
-    const [selectedGroup, setSelectedGroup] = useState<string[]>([]);
+    const [nodesArray, setNodes] = useState<Konva.Rect[]>([]);
+    const [stage, setStage] = useState({
+        scale: 1,
+        x: 0,
+        y: 0
+    });
     const trRef = useRef<Konva.Transformer>(null);
     const groupRef = useRef<Konva.Group>(null);
     const layerRef = useRef<Konva.Layer>(null);
-    const [nodesArray, setNodes] = useState<Konva.Rect[]>([]);
-    const [stageScale, setStageScale] = useState<number>(1);
-    const [stageX, setStageX] = useState<number>(0);
-    const [stageY, setStageY] = useState<number>(0);
 
     console.log("render");
 
@@ -120,7 +121,7 @@ function App() {
                 isDraggable={inGroup(rect.id)}
                 key={index}
                 shapeProps={rect}
-                isSelected={selectedGroup.includes(rect.id)||rect.id === selectedId}
+                isSelected={rect.id === selectedId}
                 onChange={(newAttrs) => {
                     const rects = pos.slice();
                     rects[index] = newAttrs;
@@ -136,7 +137,7 @@ function App() {
                         }
                         if(evt.evt.shiftKey){
                             if(trRef.current){
-                                trRef.current.nodes(nodesArray);
+                                trRef.current.nodes([...nodesArray]);
                                 trRef.current.getLayer()!.batchDraw();
                             }
                         }else{
@@ -152,9 +153,13 @@ function App() {
     const checkDeselect = (e:any) => {
         const clickedOnEmpty = e.target === e.target.getStage();
         if (clickedOnEmpty) {
-            if(selectedId !== '')setSelected('');
-            trRef.current!.nodes([]);
-            setNodes([]);
+            if(selectedId !== ''){
+                setSelected('');
+                trRef.current!.nodes([]);
+            }
+            if(nodesArray.length !== 0){
+                setNodes([]);
+            }
         }
     };
 
@@ -170,19 +175,21 @@ function App() {
 
         const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
 
-        setStageScale(newScale);
-        setStageX((stage.getPointerPosition().x / newScale - mousePointTo.x) * newScale)
-        setStageY((stage.getPointerPosition().y / newScale - mousePointTo.y) * newScale)
+        setStage({
+            scale: newScale,
+            x:(stage.getPointerPosition().x / newScale - mousePointTo.x) * newScale,
+            y:(stage.getPointerPosition().y / newScale - mousePointTo.y) * newScale
+        })
     }
 
     const sizeBox = () =>{
         if(layerRef.current){
             const selected =  layerRef.current.children?.find((shape)=>shape.id() === selectedId)
             if(selected && selected.constructor.name === 'Rect'){
-                const x = selected.attrs.x;
-                const height = selected.attrs.height;
-                const width = selected.attrs.width;
-                const y = selected.attrs.y + height + 10;
+                let x = selected.attrs.x;
+                let height = selected.attrs.height;
+                let width = selected.attrs.width;
+                let y = selected.attrs.y + height + 10;
                 return (
                     <Group>
                         <Rect
@@ -210,7 +217,6 @@ function App() {
                  e.preventDefault();
                  if(e.ctrlKey||e.metaKey){
                      if(e.key === 'd'){
-                         console.log("hello")
                          const clone = Object.assign({}, pos.find(word => word.id === selectedId))
                          if(clone !== undefined){
                              clone.id = uuidv4();
@@ -235,10 +241,10 @@ function App() {
                 height={window.innerHeight+400}
                 onClick={checkDeselect}
                 onWheel={wheelZoom}
-                scaleX={stageScale}
-                scaleY={stageScale}
-                x={stageX}
-                y={stageY}
+                scaleX={stage.scale}
+                scaleY={stage.scale}
+                x={stage.x}
+                y={stage.y}
             >
                   <Layer ref={layerRef}>
                       {layerRef.current && sizeBox()}
