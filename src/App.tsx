@@ -93,6 +93,7 @@ function App() {
     const pos = useStore($positions);
     const [selectedId,setSelected] = useState('');
     const [nodesArray, setNodes] = useState<Konva.Rect[]>([]);
+    // const [groupsArray, setGroups] = useState<Konva.Group[]>([]);
     const [stage, setStage] = useState({
         scale: 1,
         x: 0,
@@ -102,14 +103,10 @@ function App() {
     const groupRef = useRef<Konva.Group>(null);
     const layerRef = useRef<Konva.Layer>(null);
 
-    console.log("render");
-
     const inGroup = (idRect:string)=>{
-        if(groupRef.current){
-            if(groupRef.current.children){
-                if(groupRef.current.children.find((rect) => rect.id() === idRect)){
-                    return false;
-                }
+        if(groupRef.current && groupRef.current.children){
+            if(groupRef.current.children.find((rect) => rect.id() === idRect)){
+                return false;
             }
         }
         return true;
@@ -163,7 +160,7 @@ function App() {
         }
     };
 
-    const wheelZoom = (e:any) =>{
+    const wheelZoom = (e: any) =>{
         e.evt.preventDefault();
         const scaleBy = 1.02;
         const stage = e.target.getStage();
@@ -231,6 +228,17 @@ function App() {
                                  groupRef.current!.add(rect);
                              })
                          }
+                         // const group = new Konva.Group();
+                         // group.attrs.draggable = true;
+                         // nodesArray.forEach(rect=>{
+                         //     group.add(rect);
+                         // })
+                         // const temp = [...groupsArray, group];
+                         // setGroups(temp)
+                         // // layerRef.current!.add(group)
+                         // groupsArray.forEach(group=>{
+                         //     layerRef.current!.add(group);
+                         // })
                      }
                  }
              }}
